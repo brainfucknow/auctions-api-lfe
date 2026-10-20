@@ -27,8 +27,10 @@ jobs:
           rebar3-version: '3.24'
       - name: Compile
         run: rebar3 compile
+      # eunit, not `lfe ltest': ltest prints failures but exits 0, so it
+      # cannot gate a build. eunit runs the same suites and exits non-zero.
       - name: Unit and system tests
-        run: rebar3 as test lfe ltest --test-type=all
+        run: rebar3 as test eunit
       - name: Build release
         run: rebar3 as prod release
 

@@ -14,8 +14,8 @@ thin wrapper (OTP 27+ is required for the built-in `json` module).
 
 ```sh
 ./lfe.sh rebar3 compile
-./lfe.sh rebar3 as test lfe ltest                  # unit tests
-./lfe.sh rebar3 as test lfe ltest --test-type=all  # unit + system tests
+./lfe.sh rebar3 as test eunit                      # all suites; fails the build
+./lfe.sh rebar3 as test lfe ltest --test-type=all  # same suites, nicer report
 ./lfe.sh rebar3 lfe repl              # REPL
 ./scripts/fetch-upstream.sh           # clone the pinned Haskell source
 ./lfe.sh bash scripts/smoke-http.sh   # drive the API with the README's curl calls
@@ -87,6 +87,13 @@ Things that cost time here, recorded so they only cost it once.
   literals, never atoms.
 - **Hyphenated module names are atoms.** Quote them in `rebar.config`,
   `sys.config` and relx: `'auctions-sup'`.
+- **`rebar3 lfe ltest` exits 0 even when tests fail.** It prints `Failed: N`
+  and returns success anyway, so it must never be the only test step in CI.
+  `rebar3 as test eunit` runs the same suites and exits non-zero.
+- **Pin `rebar3_lfe`, do not use `~> 0.4`.** That range floats to 0.5.x, which
+  rejects `ltest --test-type` and crashes on `rebar3 help`. A globally
+  installed plugin also shadows the project's, which hides the difference
+  locally — keep the plugin in `rebar.config` only.
 - **`rebar3_proper` only discovers properties in `.erl` files**, so it cannot
   see an LFE property module. The properties here are driven through
   `proper:quickcheck/2` from ltest instead.
