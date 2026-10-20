@@ -7,7 +7,12 @@
   (export
    (add-auction-req 1)
    (bid-req 1)
-   (api-error 1)))
+   (api-error 1)
+   (auction-list-item 1)
+   (auction-detail 2)
+   (bid-item 1)))
+
+(include-lib "auctions/include/auctions.lfe")
 
 (defun api-error (message)
   (map #"message" message))
@@ -52,3 +57,33 @@
   (case (maps:find #"typ" obj)
     ('error `#(ok #(timed-ascending ,(timed-ascending:default-options))))
     (`#(ok ,bin) (auction:binary->typ bin))))
+
+;;; ---------------
+;;; responses
+;;; ---------------
+
+(defun auction-list-item (a)
+  (map #"id"       (auction-id a)
+       #"startsAt" (clock:format (auction-starts-at a))
+       #"title"    (auction-title a)
+       #"expiry"   (clock:format (auction-expiry a))
+       #"currency" (money:currency->binary (auction-currency a))))
+
+(defun bid-item (b)
+  (map #"amount" (bid-amount b)
+       #"bidder" (user:user->binary (bid-bidder b))))
+
+;; The detail view is the list item plus the bids, the winner and the price
+;; the winner pays. `winner' and `winnerPrice' are null until an auction has
+;; ended with a bid that clears the reserve.
+(defun auction-detail (a state)
+  (let ((`#(,winner ,winner-price)
+         (case (auction-state:try-get-amount-and-winner state)
+           (`#(some ,amount ,who) `#(,who ,amount))
+           ('none #(null null)))))
+    (maps:merge
+     (auction-list-item a)
+     (map #"bids" (lists:map (lambda (b) (bid-item b))
+                             (auction-state:get-bids state))
+          #"winner" winner
+          #"winnerPrice" winner-price))))

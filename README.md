@@ -18,6 +18,7 @@ thin wrapper (OTP 27+ is required for the built-in `json` module).
 ./lfe.sh rebar3 as test lfe ltest --test-type=all  # unit + system tests
 ./lfe.sh rebar3 lfe repl              # REPL
 ./scripts/fetch-upstream.sh           # clone the pinned Haskell source
+./lfe.sh bash scripts/smoke-http.sh   # drive the API with the README's curl calls
 ```
 
 ## Layout
@@ -28,7 +29,7 @@ thin wrapper (OTP 27+ is required for the built-in `json` module).
 | `src/` | domain modules and OTP plumbing |
 | `test/` | ltest twins of the Haskell Hspec suite |
 | `test/samples/` | fixtures copied verbatim from upstream |
-| `scripts/` | dev helpers (upstream fetch) |
+| `scripts/` | dev helpers (upstream fetch, HTTP smoke) |
 
 ## Phase status
 
@@ -38,7 +39,7 @@ thin wrapper (OTP 27+ is required for the built-in `json` module).
 | 1. Pure domain | done — 48 ltest cases, 1:1 with the four Hspec state specs |
 | 2. Serialization | done — JSON codecs, ISO 8601 clock, 13 ported cases |
 | 3. OTP skeleton | done — process per auction, disk_log store, 9 system tests |
-| 4. HTTP | not started |
+| 4. HTTP | done — four cowboy routes, 10 ported ApiSpec cases |
 | 5. Packaging | not started |
 | 6. OTP extras | optional |
 
