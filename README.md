@@ -21,6 +21,17 @@ thin wrapper (OTP 27+ is required for the built-in `json` module).
 ./lfe.sh bash scripts/smoke-http.sh   # drive the API with the README's curl calls
 ```
 
+## Running the release
+
+```sh
+docker build -t auctions-lfe:0.1.0 .
+docker run -p 8080:8080 -v auctions-data:/var/lib/auctions auctions-lfe:0.1.0
+```
+
+The event log lives at `/var/lib/auctions/events.log` inside the container, so
+mount a volume there to keep auctions across restarts. Port and path are set in
+[config/sys.config](config/sys.config).
+
 ## Layout
 
 | Path | Contents |
@@ -30,6 +41,7 @@ thin wrapper (OTP 27+ is required for the built-in `json` module).
 | `test/` | ltest twins of the Haskell Hspec suite |
 | `test/samples/` | fixtures copied verbatim from upstream |
 | `scripts/` | dev helpers (upstream fetch, HTTP smoke) |
+| `config/` | `sys.config` and `vm.args` for the release |
 
 ## Phase status
 
@@ -40,7 +52,7 @@ thin wrapper (OTP 27+ is required for the built-in `json` module).
 | 2. Serialization | done — JSON codecs, ISO 8601 clock, 13 ported cases |
 | 3. OTP skeleton | done — process per auction, disk_log store, 9 system tests |
 | 4. HTTP | done — four cowboy routes, 10 ported ApiSpec cases |
-| 5. Packaging | not started |
+| 5. Packaging | done — relx release, Docker image, CI |
 | 6. OTP extras | optional |
 
 ## Gotchas

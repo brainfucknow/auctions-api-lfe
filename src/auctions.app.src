@@ -1,6 +1,6 @@
 {application, 'auctions', [
     {description, "Auction API: an LFE/OTP port of auctions-api-haskell"},
-    {vsn, git},
+    {vsn, "0.1.0"},
     {registered, ['auctions-sup']},
     {mod, {'auctions-app', []}},
     {applications, [
