@@ -21,6 +21,7 @@ goes here, not in a code comment.
 | Store failure | Not surfaced to the client; worker crash loses queued events | 503 with `{"message":"event store unavailable"}` on write failure or timeout | New status code. Success bodies and codes unchanged. |
 | Event log format | `tmp/events.jsonl`, one JSON array of events per line | `disk_log` halt log, internal format, Erlang terms | The two builds cannot share a log. JSON codecs are kept for HTTP only. |
 | Base64 padding in header | Strict | Lenient (`#{padding => false}`) | The upstream README's own example has a stray `=`; strict decoding rejects the project's documentation. |
+| Time resolution | `UTCTime`, picosecond precision; `SampleData` offsets bids by `toEnum 1` = 1 ps and the wire format emits a variable-width fraction (`.000`, `.607875`, `.607875000001`) | Integer milliseconds since epoch; wire format always 3 fractional digits | Matches every timestamp that actually crosses the HTTP boundary (all of `sample-commands.jsonl` is `.xxx`) and keeps time arithmetic in machine integers. Ported tests widen the epsilon from 1 ps to 1 ms, which preserves their intent (*strictly* after start, *strictly* before end); sample timestamps truncate `.607875` to `.607`. |
 | Process restart | No equivalent; one `TVar`, one process | A crashed auction rebuilds from the log in `init` | Needed so OTP restarts do not reset an auction. |
 
 ## Wire-format rules
@@ -36,3 +37,14 @@ Checked by the serialization tests:
 - Create requests read `endsAt` and optional `typ`, but a stored auction
   serializes with `expiry` and `type`.
 - Bid objects in `sample-commands.jsonl` carry an extra `id` the decoder ignores.
+
+## Test adaptations forced by millisecond time
+
+These are mechanical consequences of the row above, not independent decisions:
+
+- `SampleData` offsets (`bid1`, `bid2`, `bid_less_than_2`) step by 1 ms instead of 1 ps.
+- `AuctionStateSpecs` "wont end just before end" / "will have ended just after end"
+  use a 1 ms epsilon.
+- `SerializationSpec` "can serialize place bid" expects `2016-01-01T08:28:00.608Z`
+  where Haskell expects `2016-01-01T08:28:00.607875000001Z`.
+- `sampleStartsAt` / `sampleEndsAt` / `sampleBidTime` truncate to `.607`.
