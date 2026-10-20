@@ -35,6 +35,13 @@
 (defun current-function (pid)
   (element 2 (erlang:process_info pid 'current_function)))
 
+;; How a hibernating process reports its current function depends on the OTP
+;; release: 27 shows erlang:hibernate/3, 28 shows gen_statem:loop_hibernate/3.
+;; Both mean the process has hibernated.
+(defun hibernating? (pid)
+  (lists:member (current-function pid)
+                '(#(erlang hibernate 3) #(gen_statem loop_hibernate 3))))
+
 ;;; -----------------
 ;;; tests
 ;;; -----------------
@@ -79,11 +86,11 @@
        (auctions:add-auction now (an-auction now (+ now 300) 0))
        (let ((pid (auction-registry:whereis_name 1)))
          (timer:sleep 700)
-         (is-equal '#(gen_statem loop_hibernate 3) (current-function pid))
+         (is-equal 'true (hibernating? pid))
          ;; a read wakes it; it must go back to sleep rather than stay up
          (ended? 1)
          (timer:sleep 100)
-         (is-equal '#(gen_statem loop_hibernate 3) (current-function pid)))))))
+         (is-equal 'true (hibernating? pid)))))))
 
 ;; A bid inside the time frame pushes expiry out, and the timer follows it.
 (deftest a-bid-in-the-time-frame-extends-the-timer

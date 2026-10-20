@@ -87,6 +87,15 @@ Things that cost time here, recorded so they only cost it once.
   literals, never atoms.
 - **Hyphenated module names are atoms.** Quote them in `rebar.config`,
   `sys.config` and relx: `'auctions-sup'`.
+- **`calendar:rfc3339_to_system_time/2` only accepts a list before OTP 28.**
+  Binary input is an OTP 28 addition, so every timestamp coming from JSON has
+  to be converted first or it fails on OTP 27.
+- **A hibernating process reports a different current function per release**:
+  `erlang:hibernate/3` on OTP 27, `gen_statem:loop_hibernate/3` on OTP 28.
+  Assert on both.
+- **OTP 27's `httpc` needs CA certificates even for plain `http://`.** It
+  computes SSL defaults eagerly, so a minimal container without
+  `ca-certificates` fails with `no_cacerts_found`. GitHub runners have them.
 - **`rebar3 lfe ltest` exits 0 even when tests fail.** It prints `Failed: N`
   and returns success anyway, so it must never be the only test step in CI.
   `rebar3 as test eunit` runs the same suites and exits non-zero.

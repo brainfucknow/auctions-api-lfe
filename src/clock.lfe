@@ -24,10 +24,17 @@
    (list_to_binary
     (calendar:system_time_to_rfc3339 ms '(#(unit millisecond) #(offset "Z"))))))
 
+;; calendar:rfc3339_to_system_time/2 only accepts a list before OTP 28, and
+;; every timestamp arriving from JSON is a binary, so convert here rather than
+;; at each call site.
 (defun parse (iso)
   (try
-    `#(ok ,(calendar:rfc3339_to_system_time iso '(#(unit millisecond))))
+    `#(ok ,(calendar:rfc3339_to_system_time (to-list iso) '(#(unit millisecond))))
     (catch ((tuple _ _ _) `#(error #(invalid-timestamp ,iso))))))
+
+(defun to-list
+  ((iso) (when (is_binary iso)) (binary_to_list iso))
+  ((iso) iso))
 
 ;;; -----------------
 ;;; private functions
