@@ -24,13 +24,22 @@
 (defun start-auction (id a at)
   (supervisor:start_child (SERVER) (list id a at)))
 
+;; Which implementation backs an auction is read once, when the supervisor
+;; starts. `auction-server' is the gen_server used for parity; `auction-statem'
+;; is the phase 6 gen_statem that ends auctions on a timer.
+(defun auction-module ()
+  (case (application:get_env 'auctions 'auction_module)
+    (`#(ok ,mod) mod)
+    ('undefined 'auction-server)))
+
 (defun init (_args)
-  `#(ok #(#M(strategy simple_one_for_one
-             intensity 5
-             period 60)
-          (#M(id auction-server
-              start #(auction-server start_link ())
-              restart transient
-              shutdown 5000
-              type worker
-              modules (auction-server))))))
+  (let ((mod (auction-module)))
+    `#(ok #(#M(strategy simple_one_for_one
+               intensity 5
+               period 60)
+            (#M(id auction-server
+                start #(,mod start_link ())
+                restart transient
+                shutdown 5000
+                type worker
+                modules (,mod)))))))

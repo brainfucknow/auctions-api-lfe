@@ -49,3 +49,18 @@ These are mechanical consequences of the row above, not independent decisions:
 - `SerializationSpec` "can serialize place bid" expects `2016-01-01T08:28:00.608Z`
   where Haskell expects `2016-01-01T08:28:00.607875000001Z`.
 - `sampleStartsAt` / `sampleEndsAt` / `sampleBidTime` truncate to `.607`.
+
+## Beyond parity (phase 6)
+
+These are additions with no Haskell counterpart. They are opt-in and off by
+default, so they do not affect the parity surface described above.
+
+| Addition | How to enable | Notes |
+| --- | --- | --- |
+| `auction-statem`, a `gen_statem` auction that ends on a timer and hibernates | `{auction_module, 'auction-statem'}` in the application environment | Emits an extra `AuctionEnded` event. `auction-server` (the default) never does. |
+| `AuctionEnded` event | written only by `auction-statem` | Serializes as `{"$type":"AuctionEnded","at":...,"auctionId":...}`. Replaying it only advances the clock, since the state machines already end lazily. |
+| PropEr invariants | run with the normal suite | Highest bid never decreases in an English auction; at most one bid per user in a sealed one. |
+
+The timer is armed off the real clock while domain decisions still go through
+`clock:now/0`, so pinning the clock does not pin the timer. That is why parity
+testing uses the gen_server and the statem has its own suite.

@@ -53,7 +53,22 @@ mount a volume there to keep auctions across restarts. Port and path are set in
 | 3. OTP skeleton | done — process per auction, disk_log store, 9 system tests |
 | 4. HTTP | done — four cowboy routes, 10 ported ApiSpec cases |
 | 5. Packaging | done — relx release, Docker image, CI |
-| 6. OTP extras | optional |
+| 6. OTP extras | done — `gen_statem` variant, hibernation, PropEr invariants |
+
+## The gen_statem variant
+
+`auction-server` (a `gen_server`) backs an auction by default. Phase 6 adds
+`auction-statem`, which additionally ends an auction on a `state_timeout` and
+hibernates it afterwards:
+
+```erlang
+%% sys.config
+{auctions, [{auction_module, 'auction-statem'}]}
+```
+
+It emits an extra `AuctionEnded` event; see [PARITY.md](PARITY.md). Its timer
+is armed off the real clock, so it is tested separately from the parity suite,
+which pins the clock.
 
 ## Gotchas
 
@@ -72,6 +87,11 @@ Things that cost time here, recorded so they only cost it once.
   literals, never atoms.
 - **Hyphenated module names are atoms.** Quote them in `rebar.config`,
   `sys.config` and relx: `'auctions-sup'`.
+- **`rebar3_proper` only discovers properties in `.erl` files**, so it cannot
+  see an LFE property module. The properties here are driven through
+  `proper:quickcheck/2` from ltest instead.
+- **A `gen_statem` reply action does not re-hibernate.** Answering a call wakes
+  an ended auction up for good unless `hibernate` is added to every reply.
 - **`ltest` only runs unit suites by default.** Pass `--test-type=all` to
   include `ltest-system` modules, or they silently do not run.
 - **`call` is an LFE core form** (used for dynamic dispatch, as in

@@ -171,5 +171,7 @@
      (ets:insert (EVENTS) `#(,(auction-id a) ,seq ,event))
      (ets:insert (ADDED) `#(,seq ,(auction-id a) ,a)))
     (`#(bid-accepted ,_ ,b)
-     (ets:insert (EVENTS) `#(,(bid-auction b) ,seq ,event))))
+     (ets:insert (EVENTS) `#(,(bid-auction b) ,seq ,event)))
+    (`#(auction-ended ,_ ,id)
+     (ets:insert (EVENTS) `#(,id ,seq ,event))))
   'ok)

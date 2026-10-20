@@ -29,13 +29,32 @@
   ((`#(auction-added ,at ,a))
    (map #"$type" #"AuctionAdded" #"at" (clock:format at) #"auction" (auction:to-json a)))
   ((`#(bid-accepted ,at ,b))
-   (map #"$type" #"BidAccepted" #"at" (clock:format at) #"bid" (bid:to-json b))))
+   (map #"$type" #"BidAccepted" #"at" (clock:format at) #"bid" (bid:to-json b)))
+  ;; AuctionEnded has no Haskell counterpart; only the gen_statem variant
+  ;; emits it. See README, phase 6.
+  ((`#(auction-ended ,at ,id))
+   (map #"$type" #"AuctionEnded" #"at" (clock:format at) #"auctionId" id)))
 
 (defun command-from-json (obj)
   (from-json obj #"AddAuction" 'add-auction #"PlaceBid" 'place-bid))
 
 (defun event-from-json (obj)
-  (from-json obj #"AuctionAdded" 'auction-added #"BidAccepted" 'bid-accepted))
+  (case (ended-from-json obj)
+    ('not-ended (from-json obj #"AuctionAdded" 'auction-added
+                           #"BidAccepted" 'bid-accepted))
+    (result result)))
+
+(defun ended-from-json
+  ((obj) (when (is_map obj))
+   (case (list (maps:find #"$type" obj)
+               (maps:find #"at" obj)
+               (maps:find #"auctionId" obj))
+     ((list `#(ok #"AuctionEnded") `#(ok ,at-bin) `#(ok ,id))
+      (case (clock:parse at-bin)
+        (`#(ok ,at) `#(ok #(auction-ended ,at ,id)))
+        (_ `#(error #(invalid-command ,obj)))))
+     (_ 'not-ended)))
+  ((_other) 'not-ended))
 
 (defun from-json
   ((obj auction-type auction-tag bid-type bid-tag) (when (is_map obj))
@@ -72,6 +91,13 @@
 (defun apply-event
   ((`#(auction-added ,_ ,a) auctions)
    (maps:put (auction-id a) (tuple a (auction:empty-state a)) auctions))
+  ;; The state machines already end an auction lazily when `inc' is given a
+  ;; late enough time, so replaying AuctionEnded only has to advance the clock.
+  ((`#(auction-ended ,at ,id) auctions)
+   (case (maps:find id auctions)
+     (`#(ok #(,a ,state))
+      (maps:put id (tuple a (auction-state:inc at state)) auctions))
+     ('error auctions)))
   ((`#(bid-accepted ,_ ,b) auctions)
    (case (maps:find (bid-auction b) auctions)
      (`#(ok #(,a ,state))

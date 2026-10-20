@@ -6,6 +6,7 @@
 (defmodule auction-state
   (export
    (family 1)
+   (expiry 1)
    (inc 2)
    (add-bid 2)
    (get-bids 1)
@@ -18,6 +19,11 @@
   ((`#(has-ended ,_ ,_ ,_))       'timed-ascending)
   ((`#(accepting-bids ,_ ,_ ,_))  'single-sealed-bid)
   ((`#(disclosing-bids ,_ ,_ ,_)) 'single-sealed-bid))
+
+;; Every state in both families carries its expiry in the same position: the
+;; initial expiry for a sealed bid, the possibly-extended one for an English
+;; auction. The gen_statem variant uses this to arm its expiry timer.
+(defun expiry (state) (element 3 state))
 
 (defun inc (now state)
   (call (family state) 'inc now state))
