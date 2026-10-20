@@ -14,7 +14,8 @@ thin wrapper (OTP 27+ is required for the built-in `json` module).
 
 ```sh
 ./lfe.sh rebar3 compile
-./lfe.sh rebar3 as test lfe ltest     # unit tests
+./lfe.sh rebar3 as test lfe ltest                  # unit tests
+./lfe.sh rebar3 as test lfe ltest --test-type=all  # unit + system tests
 ./lfe.sh rebar3 lfe repl              # REPL
 ./scripts/fetch-upstream.sh           # clone the pinned Haskell source
 ```
@@ -27,7 +28,7 @@ thin wrapper (OTP 27+ is required for the built-in `json` module).
 | `src/` | domain modules and OTP plumbing |
 | `test/` | ltest twins of the Haskell Hspec suite |
 | `test/samples/` | fixtures copied verbatim from upstream |
-| `scripts/` | dev helpers (upstream fetch, smoke check) |
+| `scripts/` | dev helpers (upstream fetch) |
 
 ## Phase status
 
@@ -36,7 +37,7 @@ thin wrapper (OTP 27+ is required for the built-in `json` module).
 | 0. Scaffold | done — app starts with an empty tree |
 | 1. Pure domain | done — 48 ltest cases, 1:1 with the four Hspec state specs |
 | 2. Serialization | done — JSON codecs, ISO 8601 clock, 13 ported cases |
-| 3. OTP skeleton | not started |
+| 3. OTP skeleton | done — process per auction, disk_log store, 9 system tests |
 | 4. HTTP | not started |
 | 5. Packaging | not started |
 | 6. OTP extras | optional |
@@ -58,5 +59,10 @@ Things that cost time here, recorded so they only cost it once.
   literals, never atoms.
 - **Hyphenated module names are atoms.** Quote them in `rebar.config`,
   `sys.config` and relx: `'auctions-sup'`.
+- **`ltest` only runs unit suites by default.** Pass `--test-type=all` to
+  include `ltest-system` modules, or they silently do not run.
+- **`call` is an LFE core form** (used for dynamic dispatch, as in
+  `auction-state`). Defining your own `call/3` fails to compile.
+- **`is_process_alive` is not guard-safe** — test it in the body, not a `when`.
 - **Keep `inc` lazy.** Reading an auction must not persist the advanced state,
   or the English timing tests diverge.

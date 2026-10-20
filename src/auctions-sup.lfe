@@ -51,12 +51,28 @@
 ;;; private functions
 ;;; -----------------
 
-(defun children () '())
+;; Order matters. The event store owns the ETS index, so if it dies the index
+;; dies with it and everything after it must be rebuilt from the file rather
+;; than left pointing at a store that forgot them. The replayer runs last,
+;; once the store, the registry and the auction supervisor are all up.
+(defun children ()
+  (list (worker 'event-store 'permanent)
+        (worker 'auction-registry 'permanent)
+        (supervisor-child 'auction-sup)
+        (worker 'event-replayer 'transient)))
 
-(defun child (mod fun args)
+(defun worker (mod restart)
   `#M(id ,mod
-      start #(,mod ,fun ,args)
-      restart permanent
-      shutdown 2000
+      start #(,mod start_link ())
+      restart ,restart
+      shutdown 5000
       type worker
+      modules (,mod)))
+
+(defun supervisor-child (mod)
+  `#M(id ,mod
+      start #(,mod start_link ())
+      restart permanent
+      shutdown infinity
+      type supervisor
       modules (,mod)))
