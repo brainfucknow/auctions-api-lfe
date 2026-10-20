@@ -62,7 +62,12 @@
      (auction-registry:set-auction id a)
      (ready id a (auction:empty-state a) 'false))
     (`#(error ,_reason)
-     `#(stop normal))))
+     (give-up id))))
+
+;; Free the id before stopping; see auction-registry:release.
+(defun give-up (id)
+  (auction-registry:release id)
+  '#(stop normal))
 
 (defun append-added (at a)
   (try
@@ -77,7 +82,7 @@
        (ready id a state (published? events)))
       ('error
        (logger:error "auction ~p has a corrupt log" (list id))
-       `#(stop normal)))))
+       (give-up id)))))
 
 ;; An auction that lapsed while the node was down starts up ended, and
 ;; publishes AuctionEnded on entry unless the log already has it.

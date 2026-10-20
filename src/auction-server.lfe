@@ -59,7 +59,7 @@
          (auction-registry:set-auction id a)
          `#(noreply ,(map 'auction a 'state (auction:empty-state a))))
         (`#(error ,_reason)
-         `#(stop normal ,data))))
+         (give-up id data))))
      (events
       (let ((repository (commands:fold-events events)))
         (case (maps:find id repository)
@@ -68,7 +68,12 @@
            `#(noreply ,(map 'auction recovered 'state state)))
           ('error
            (logger:error "auction ~p has a corrupt log" (list id))
-           `#(stop normal ,data))))))))
+           (give-up id data))))))))
+
+;; Free the id before stopping; see auction-registry:release.
+(defun give-up (id data)
+  (auction-registry:release id)
+  `#(stop normal ,data))
 
 ;; An append that times out exits; that used to fail init, and now fails the
 ;; create the same way.

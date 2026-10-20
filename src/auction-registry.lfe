@@ -30,6 +30,7 @@
   ;; registry API
   (export
    (set-auction 2)
+   (release 1)
    (lookup 1)
    (auctions 0)))
 
@@ -96,6 +97,14 @@
 
 (defun set-auction (id a)
   (ets:update_element (TABLE) id `(#(3 ,a)))
+  'ok)
+
+;; Remove the caller's own row now, rather than when the DOWN message
+;; arrives. An auction that gives up calls this before it stops, so the id
+;; is free again by the time the caller of the create sees the failure.
+;; Matching on self() leaves a newer registration alone.
+(defun release (id)
+  (ets:match_delete (TABLE) `#(,id ,(self) _))
   'ok)
 
 (defun lookup (id)
