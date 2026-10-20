@@ -2,7 +2,8 @@
 ;;;
 ;;; Owns a public ETS table of #(AuctionId Pid Auction). The auction record is
 ;;; kept alongside the pid so GET /auctions can list every auction without
-;;; sending a message to a single auction process.
+;;; sending a message to a single auction process. The table is an
+;;; ordered_set so that listing comes out in id order without a sort.
 ;;;
 ;;; The table is owned by this gen_server, so losing it takes down everything
 ;;; started after it under the top supervisor's rest_for_one strategy.
@@ -47,7 +48,7 @@
 
 (defun init (_args)
   (ets:new (TABLE)
-           '(set named_table public #(read_concurrency true)))
+           '(ordered_set named_table public #(read_concurrency true)))
   `#(ok ,(map)))
 
 ;;; -----------------
@@ -102,15 +103,15 @@
     ((list `#(,_ ,pid ,a)) `#(ok #(,pid ,a)))
     (_ 'error)))
 
-;; Auctions in id order, skipping any process that has registered but not yet
-;; published its record.
+;; Auctions in id order (the table's key order), skipping any process that
+;; has registered but not yet published its record.
 (defun auctions ()
   (lists:filtermap
    (lambda (row)
      (case row
        (`#(,_ ,_ undefined) 'false)
        (`#(,_ ,_ ,a) `#(true ,a))))
-   (lists:keysort 1 (ets:tab2list (TABLE)))))
+   (ets:tab2list (TABLE))))
 
 ;;; -----------------------
 ;;; callback implementation

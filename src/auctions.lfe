@@ -26,12 +26,25 @@
 ;; start_child losing the race against a concurrent create is the same
 ;; outcome as finding the auction above; the registry is what makes that
 ;; atomic, so no extra locking is needed.
+;;
+;; start_child returns as soon as the process exists. The auction writes
+;; AuctionAdded afterwards and answers `ready' once it has. If the write
+;; failed the process is gone and the call exits instead.
 (defun start (id a now)
   (case (auction-sup:start-auction id a now)
-    (`#(ok ,_pid) `#(ok #(auction-added ,now ,a)))
+    (`#(ok ,pid) (await-ready pid now a))
     (`#(error #(already_started ,_)) `#(error #(auction-already-exists ,id)))
     ('#(error already_present) `#(error #(auction-already-exists ,id)))
     (`#(error ,_reason) '#(error event-store-unavailable))))
+
+;; infinity, as start_child was: only the store's barrier can hold this up.
+(defun await-ready (pid now a)
+  (try
+    (progn
+      (gen_server:call pid 'ready 'infinity)
+      `#(ok #(auction-added ,now ,a)))
+    (catch
+      ((tuple 'exit _ _) '#(error event-store-unavailable)))))
 
 (defun place-bid (now b)
   (let ((id (bid-auction b)))
