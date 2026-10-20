@@ -35,7 +35,7 @@ thin wrapper (OTP 27+ is required for the built-in `json` module).
 | --- | --- |
 | 0. Scaffold | done — app starts with an empty tree |
 | 1. Pure domain | done — 48 ltest cases, 1:1 with the four Hspec state specs |
-| 2. Serialization | not started |
+| 2. Serialization | done — JSON codecs, ISO 8601 clock, 13 ported cases |
 | 3. OTP skeleton | not started |
 | 4. HTTP | not started |
 | 5. Packaging | not started |
