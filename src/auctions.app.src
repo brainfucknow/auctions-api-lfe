@@ -1,0 +1,19 @@
+{application, 'auctions', [
+    {description, "Auction API: an LFE/OTP port of auctions-api-haskell"},
+    {vsn, git},
+    {registered, ['auctions-sup']},
+    {mod, {'auctions-app', []}},
+    {applications, [
+        kernel,
+        stdlib,
+        cowboy
+    ]},
+    {env, [
+        {events_file, "tmp/auctions-events.log"},
+        {http_port, 8080}
+    ]},
+    {modules, []},
+
+    {licenses, ["Apache 2.0"]},
+    {links, []}
+ ]}.
