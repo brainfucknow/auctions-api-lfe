@@ -1,8 +1,4 @@
-;;; Runs the PropEr properties as part of the normal suite.
-;;;
-;;; rebar3_proper only discovers properties in `.erl' files, so it cannot see
-;;; an LFE property module. Driving proper:quickcheck/2 from ltest keeps one
-;;; test command for the whole project instead of adding an Erlang shim.
+;;; Runs PropEr through ltest; rebar3_proper only discovers .erl modules.
 (defmodule property-tests
   (behaviour ltest-unit)
   (export all))

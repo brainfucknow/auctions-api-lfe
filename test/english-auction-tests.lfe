@@ -20,9 +20,7 @@
 (defun ended-after-two-bids ()
   (auction-state:inc (sample-data:ends-at) (element 1 (state-with-2-bids))))
 
-;;; ------------------------
 ;;; english auction states
-;;; ------------------------
 
 (deftest can-add-bid-to-empty-state
   (is-equal 'ok (element 2 (state-with-1-bid))))
@@ -57,9 +55,7 @@
 
 (deftestgen increment (increment-spec:tests (empty-asc)))
 
-;;; ------------------------
 ;;; english auction timing
-;;; ------------------------
 
 (deftest transitions-to-ongoing-after-start
   (is-equal `#(on-going () ,(sample-data:ends-at) ,(opts))
@@ -102,9 +98,7 @@
              (auction-state:inc (+ (tf-extended-expiry) 1000)
                                 (tf-state-after-bid)))))
 
-;;; ------------------------------------
 ;;; english auction type serialization
-;;; ------------------------------------
 
 (deftest can-deserialize-sample-typ
   (is-equal `#(ok ,(opts)) (timed-ascending:binary->options #"English|0|0|0")))

@@ -22,9 +22,7 @@
 (defun empty-state (expiry opts)
   `#(accepting-bids ,(map) ,expiry ,opts))
 
-;;; ---------------
 ;;; state machine
-;;; ---------------
 
 (defun inc
   ((now (= `#(accepting-bids ,bids ,expiry ,opts) state))
@@ -70,10 +68,6 @@
   ((`#(disclosing-bids ,_ ,_ ,_)) 'true)
   ((_) 'false))
 
-;;; -----------------
-;;; private functions
-;;; -----------------
-
 ;; Haskell's Map.elems yields bids ordered by user id; `disclose' then applies
 ;; a stable sort on descending amount, so equal amounts keep user-id order.
 (defun elems (bids-by-user)
@@ -84,9 +78,7 @@
   (lists:sort (lambda (a b) (>= (bid-amount a) (bid-amount b)))
               (elems bids-by-user)))
 
-;;; ---------------
 ;;; string codec
-;;; ---------------
 
 (defun options->binary
   (('blind) #"Blind")

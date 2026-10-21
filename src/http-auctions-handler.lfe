@@ -26,9 +26,7 @@
 (defun init (req route)
   (tuple 'ok (dispatch route (cowboy_req:method req) req) route))
 
-;;; -----------------
 ;;; routing
-;;; -----------------
 
 (defun dispatch
   (('auctions #"GET" req) (list-auctions req))
@@ -44,9 +42,7 @@
     (`#(ok ,id) (funcall f id req))
     ('error (text 404 #"Not Found" req))))
 
-;;; -----------------
 ;;; handlers
-;;; -----------------
 
 (defun list-auctions (req)
   (json 200
@@ -91,12 +87,8 @@
                 typ (maps:get 'typ spec)
                 currency (maps:get 'currency spec)))
 
-;;; -----------------
 ;;; plumbing
-;;; -----------------
 
-;; Header first, then body: there is no point validating a body sent by a
-;; caller who is not allowed to send one.
 (defun authenticated (req f)
   (case (jwt:decode-user (cowboy_req:header #"x-jwt-payload" req #""))
     ('error (text 401 #"Unauthorized" req))

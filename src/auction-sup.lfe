@@ -1,15 +1,10 @@
-;;; Supervisor for the per-auction processes.
-;;;
-;;; simple_one_for_one restarts a crashed auction with the same arguments it
-;;; was started with. Those arguments include the auction record so that a
-;;; *first* start can write AuctionAdded; on a restart the log already has
-;;; events, so init replays instead and the record is ignored.
+;;; Supervisor for per-auction processes.
+;;; Restart arguments include the auction record for a fresh create;
+;;; recovery uses logged events instead.
 (defmodule auction-sup
   (behaviour supervisor)
-  ;; supervisor implementation
   (export
    (start_link 0))
-  ;; callback implementation
   (export
    (init 1))
   ;; supervisor API
@@ -24,9 +19,7 @@
 (defun start-auction (id a at)
   (supervisor:start_child (SERVER) (list id a at)))
 
-;; Which implementation backs an auction is read once, when the supervisor
-;; starts. `auction-server' is the gen_server used for parity; `auction-statem'
-;; is the phase 6 gen_statem that ends auctions on a timer.
+;; Choose the auction implementation once at supervisor startup.
 (defun auction-module ()
   (case (application:get_env 'auctions 'auction_module)
     (`#(ok ,mod) mod)

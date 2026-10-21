@@ -1,6 +1,4 @@
-;;; Port of test/AuctionStateSpecs.hs `incrementSpec', shared by every auction
-;;; type. Returns an EUnit test set so each auction-type module can run it
-;;; against its own base state, the way Hspec reuses the describe block.
+;;; Shared EUnit tests ported from test/AuctionStateSpecs.hs `incrementSpec'.
 (defmodule increment-spec
   (export (tests 1)))
 

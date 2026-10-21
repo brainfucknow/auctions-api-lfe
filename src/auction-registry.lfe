@@ -1,19 +1,11 @@
-;;; Process registry for auctions, usable as a `via' module.
-;;;
-;;; Owns a public ETS table of #(AuctionId Pid Auction). The auction record is
-;;; kept alongside the pid so GET /auctions can list every auction without
-;;; sending a message to a single auction process. The table is an
-;;; ordered_set so that listing comes out in id order without a sort.
-;;;
-;;; The table is owned by this gen_server, so losing it takes down everything
-;;; started after it under the top supervisor's rest_for_one strategy.
+;;; Auction `via' registry. Owns a public ETS ordered_set of #(AuctionId Pid Auction).
+;;; Cached records let GET /auctions list auctions in id order without process calls.
+;;; A registry crash restarts dependent children through rest_for_one.
 (defmodule auction-registry
   (behaviour gen_server)
-  ;; gen_server implementation
   (export
    (start_link 0)
    (stop 0))
-  ;; callback implementation
   (export
    (init 1)
    (handle_call 3)
@@ -37,10 +29,6 @@
 (defun SERVER () (MODULE))
 (defun TABLE () 'auctions-registry)
 
-;;; -------------------------
-;;; gen_server implementation
-;;; -------------------------
-
 (defun start_link ()
   (gen_server:start_link `#(local ,(SERVER)) (MODULE) '() '()))
 
@@ -52,9 +40,7 @@
            '(ordered_set named_table public #(read_concurrency true)))
   `#(ok ,(map)))
 
-;;; -----------------
 ;;; `via' callbacks
-;;; -----------------
 
 ;; insert_new is the atomic step that decides a race between two concurrent
 ;; creates of the same auction id. A losing caller gets 'no, which the facade
@@ -91,9 +77,7 @@
     ('undefined (exit `#(badarg #(,id ,msg))))
     (pid (! pid msg) pid)))
 
-;;; ---------------
 ;;; registry API
-;;; ---------------
 
 (defun set-auction (id a)
   (ets:update_element (TABLE) id `(#(3 ,a)))
@@ -121,10 +105,6 @@
        (`#(,_ ,_ undefined) 'false)
        (`#(,_ ,_ ,a) `#(true ,a))))
    (ets:tab2list (TABLE))))
-
-;;; -----------------------
-;;; callback implementation
-;;; -----------------------
 
 (defun handle_call
   (('stop _from state) `#(stop shutdown ok ,state))
