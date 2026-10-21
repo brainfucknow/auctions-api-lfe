@@ -46,18 +46,33 @@
 
 (defun init
   (((list id a at))
-   (event-store:sync)
-   (case (event-store:events-for id)
-     (() (fresh id a at))
-     (events (recover id events)))))
+   `#(ok booting #M(id ,id auction ,a at ,at) (#(next_event internal boot)))))
+
+;; Same split as auction-server: the synced write runs in an internal
+;; `boot' event, which is queued ahead of any call.
+(defun boot (id a at)
+  (event-store:sync)
+  (case (event-store:events-for id)
+    (() (fresh id a at))
+    (events (recover id events))))
 
 (defun fresh (id a at)
-  (case (event-store:append `#(auction-added ,at ,a))
+  (case (append-added at a)
     ('ok
      (auction-registry:set-auction id a)
      (ready id a (auction:empty-state a) 'false))
-    (`#(error ,reason)
-     `#(stop ,reason))))
+    (`#(error ,_reason)
+     (give-up id))))
+
+;; Free the id before stopping; see auction-registry:release.
+(defun give-up (id)
+  (auction-registry:release id)
+  '#(stop normal))
+
+(defun append-added (at a)
+  (try
+    (event-store:append `#(auction-added ,at ,a))
+    (catch ((tuple 'exit reason _) `#(error ,reason)))))
 
 (defun recover (id events)
   (let ((repository (commands:fold-events events)))
@@ -66,7 +81,8 @@
        (auction-registry:set-auction id a)
        (ready id a state (published? events)))
       ('error
-       `#(stop #(corrupt-log ,id))))))
+       (logger:error "auction ~p has a corrupt log" (list id))
+       (give-up id)))))
 
 ;; An auction that lapsed while the node was down starts up ended, and
 ;; publishes AuctionEnded on entry unless the log already has it.
@@ -74,8 +90,8 @@
   (let* ((advanced (auction-state:inc (clock:now) state))
          (data (map 'id id 'auction a 'state advanced 'published published)))
     (if (auction-state:has-ended advanced)
-      `#(ok ended ,data)
-      `#(ok active ,data))))
+      `#(next_state ended ,data)
+      `#(next_state active ,data))))
 
 (defun published? (events)
   (lists:any (lambda (e) (=:= (element 1 e) 'auction-ended)) events))
@@ -85,6 +101,12 @@
 ;;; -----------------------
 
 (defun handle_event
+  (('enter _old 'booting _data)
+   'keep_state_and_data)
+
+  (('internal 'boot 'booting (map 'id id 'auction a 'at at))
+   (boot id a at))
+
   ;; Arm the expiry timer whenever we (re)enter the active state.
   (('enter _old 'active data)
    `#(keep_state_and_data (,(expiry-timeout data))))
@@ -122,6 +144,11 @@
            `#(ok #(,(maps:get 'auction data)
                    ,(auction-state:inc now (maps:get 'state data))))
            fsm))
+
+  ;; Answered only once `boot' has completed, which is what the facade's
+  ;; create waits for.
+  ((`#(call ,from) 'ready fsm _data)
+   (answer from 'ok fsm))
 
   ((`#(call ,from) 'stop _fsm data)
    `#(stop_and_reply shutdown (#(reply ,from ok)) ,data))

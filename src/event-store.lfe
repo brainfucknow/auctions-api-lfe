@@ -6,6 +6,10 @@
 ;;; has reached the device. Haskell queues the event and replies first; see
 ;;; PARITY.md. There is deliberately no cast path - every caller blocks, which
 ;;; is what bounds this process's mailbox.
+;;;
+;;; The sync is the cost, so appends are group-committed: every append
+;;; waiting in the mailbox is written in one pass under a single sync.
+;;; `{events_fsync, false}' skips the sync; see README.
 (defmodule event-store
   (behaviour gen_server)
   ;; gen_server implementation
@@ -34,6 +38,8 @@
 (defun EVENTS () 'auctions-event-index)
 (defun ADDED () 'auctions-auction-order)
 (defun TIMEOUT () 5000)
+;; Upper bound on appends written under one sync.
+(defun MAX-BATCH () 256)
 
 ;;; -------------------------
 ;;; gen_server implementation
@@ -91,37 +97,48 @@
                            #(format internal)
                            #(repair true)))
       ((tuple 'ok _)
-       `#(ok ,(build-index)))
+       `#(ok ,(initial-state)))
       ((tuple 'repaired _ _ _)
        ;; A torn tail from an unclean shutdown was trimmed on open.
-       `#(ok ,(build-index)))
+       `#(ok ,(initial-state)))
       ((tuple 'error reason)
        `#(stop ,reason)))))
 
+;; State: the next sequence number and whether to sync after each batch.
+(defun initial-state ()
+  (map 'seq (build-index) 'fsync (fsync?)))
+
 (defun handle_call
-  ((`#(append ,event) _from seq)
-   (case (write-event event)
-     ('ok
-      (index-event event seq)
-      `#(reply ok ,(+ seq 1)))
-     (`#(error ,reason)
-      `#(reply #(error ,reason) ,seq))))
-  (('sync _from seq)
-   `#(reply ok ,seq))
-  (('stop _from seq)
-   `#(stop shutdown ok ,seq))
-  ((_msg _from seq)
-   `#(reply #(error "Unknown command.") ,seq)))
+  ;; Group commit: this append plus every append already queued behind it.
+  ;; The other callers are answered with gen_server:reply once the batch is
+  ;; on disk; this one through the normal return.
+  ((`#(append ,event) from state)
+   (let* ((batch (cons `#(,from ,event) (drain (- (MAX-BATCH) 1) '())))
+          (`#(,replies ,next) (commit batch state)))
+     (lists:foreach (lambda (r)
+                      (case r
+                        (`#(,f ,reply) (when (=/= f from))
+                         (gen_server:reply f reply))
+                        (_ 'ok)))
+                    replies)
+     ;; The caller of this handle_call heads the batch.
+     `#(reply ,(element 2 (hd replies)) ,next)))
+  (('sync _from state)
+   `#(reply ok ,state))
+  (('stop _from state)
+   `#(stop shutdown ok ,state))
+  ((_msg _from state)
+   `#(reply #(error "Unknown command.") ,state)))
 
-(defun handle_cast (_msg seq) `#(noreply ,seq))
+(defun handle_cast (_msg state) `#(noreply ,state))
 
-(defun handle_info (_msg seq) `#(noreply ,seq))
+(defun handle_info (_msg state) `#(noreply ,state))
 
-(defun terminate (_reason _seq)
+(defun terminate (_reason _state)
   (disk_log:close (LOG))
   'ok)
 
-(defun code_change (_old seq _extra) `#(ok ,seq))
+(defun code_change (_old state _extra) `#(ok ,state))
 
 ;;; -----------------
 ;;; private functions
@@ -139,15 +156,68 @@
     (`#(ok ,path) path)
     ('undefined "tmp/auctions-events.log")))
 
-;; log/2 hands the term to the OS; sync/1 is what pushes it to the device.
-;; Without the sync this would be no more durable than the Haskell worker.
-(defun write-event (event)
-  (case (disk_log:log (LOG) event)
-    ('ok
-     (case (disk_log:sync (LOG))
-       ('ok 'ok)
-       (`#(error ,reason) `#(error ,reason))))
-    (`#(error ,reason) `#(error ,reason))))
+(defun fsync? ()
+  (case (application:get_env 'auctions 'events_fsync)
+    ('#(ok false) 'false)
+    (_ 'true)))
+
+;; Pull up to n further append requests out of the mailbox without waiting.
+;; Other requests stay queued and are answered after this batch, which is
+;; still after everything queued ahead of them, so the `sync' barrier holds.
+(defun drain (n acc)
+  (if (=< n 0)
+    (lists:reverse acc)
+    (receive
+      (`#($gen_call ,from #(append ,event))
+       (drain (- n 1) (cons `#(,from ,event) acc)))
+      (after 0
+        (lists:reverse acc)))))
+
+;; Write every event in the batch, then sync once. Returns #(Replies State)
+;; where Replies is a list of #(From Reply) in batch order.
+;;
+;; log/2 hands the term to the OS; sync/1 pushes it to the device. Each
+;; event gets its own log/2 call, so a halt log that fills mid-batch fails
+;; only the events that did not fit. If the sync fails, every event written
+;; in this pass is reported as failed.
+(defun commit (batch state)
+  (let* ((fsync (maps:get 'fsync state))
+         (`#(,written ,seq2) (write-all batch (maps:get 'seq state))))
+    (case (sync-written written fsync)
+      ('ok
+       (lists:foreach (lambda (w)
+                        (case w
+                          (`#(,_ ok ,event ,n) (index-event event n))
+                          (_ 'ok)))
+                      written)
+       `#(,(lists:map (lambda (w) `#(,(element 1 w) ,(element 2 w))) written)
+          ,(maps:put 'seq seq2 state)))
+      (`#(error ,reason)
+       `#(,(lists:map (lambda (w) `#(,(element 1 w) #(error ,reason))) written)
+          ,(maps:put 'seq seq2 state))))))
+
+;; Returns #(Written NextSeq) with Written a list of
+;; #(From ok|#(error Reason) Event Seq) in batch order. A failed write does
+;; not consume a sequence number.
+(defun write-all (batch seq)
+  (let ((`#(,acc ,next)
+         (lists:foldl
+          (lambda (entry acc-seq)
+            (let ((`#(,from ,event) entry)
+                  (`#(,acc ,n) acc-seq))
+              (case (disk_log:log (LOG) event)
+                ('ok `#(,(cons `#(,from ok ,event ,n) acc) ,(+ n 1)))
+                (`#(error ,reason)
+                 `#(,(cons `#(,from #(error ,reason) ,event ,n) acc) ,n)))))
+          `#(() ,seq)
+          batch)))
+    `#(,(lists:reverse acc) ,next)))
+
+(defun sync-written (written fsync)
+  (if (andalso fsync
+               (lists:any (lambda (w) (=:= (element 2 w) 'ok)) written))
+    (disk_log:sync (LOG))
+    'ok))
 
 (defun build-index ()
   (ets:new (EVENTS) '(bag named_table protected #(read_concurrency true)))

@@ -17,7 +17,7 @@ goes here, not in a code comment.
 | Behaviour | Haskell | Port | Why |
 | --- | --- | --- | --- |
 | Auth vs body on POST | Parses body first, so malformed JSON gives 400 before a missing header gives 401 | Decodes `x-jwt-payload` first, so 401 wins | No point validating a body for a caller not allowed to send one. Visible only to clients sending both a bad header and a bad body. |
-| Event durability | `TBQueue` + async worker; reply precedes the write | `append` writes and syncs before the state changes and the reply is sent | An acknowledged bid survives a crash. Costs latency per write. |
+| Event durability | `TBQueue` + async worker; reply precedes the write | `append` writes and syncs before the state changes and the reply is sent | An acknowledged bid survives a crash. Costs one sync per write; see README for the batching and the opt-out. |
 | Store failure | Not surfaced to the client; worker crash loses queued events | 503 with `{"message":"event store unavailable"}` on write failure or timeout | New status code. Success bodies and codes unchanged. |
 | Event log format | `tmp/events.jsonl`, one JSON array of events per line | `disk_log` halt log, internal format, Erlang terms | The two builds cannot share a log. JSON codecs are kept for HTTP only. |
 | Base64 padding in header | Strict | Lenient: padding characters are stripped before `base64:decode/2` with `#{padding => false}` (that option alone still rejects the stray `=`) | The upstream README's own example has a stray `=`; strict decoding rejects the project's documentation. |

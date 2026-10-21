@@ -13,6 +13,7 @@
   ;; callback implementation
   (export
    (init 1)
+   (handle_continue 2)
    (handle_call 3)
    (handle_cast 2)
    (handle_info 2)
@@ -31,13 +32,21 @@
 ;;; callback implementation
 ;;; -----------------------
 
+;; init only records its arguments. start_child blocks the supervisor until
+;; init returns, so the synced write happens in handle_continue instead. A
+;; continue runs before the first call, so no call is answered until the
+;; auction is on disk or recovered.
+(defun init
+  (((list id a at))
+   `#(ok #M(id ,id auction ,a at ,at) #(continue boot))))
+
 ;; Recovery and first start are the same code path. If the log already has
 ;; events for this id we are being restarted, so fold them and write nothing;
 ;; otherwise this is a fresh create and AuctionAdded must reach disk before
-;; init returns. Because a gen_server answers no calls until init returns,
-;; AuctionAdded is always on disk before any BidAccepted for this auction.
-(defun init
-  (((list id a at))
+;; `ready' is answered. On failure the process stops normally: the
+;; supervisor does not restart it, and the facade's call exits instead.
+(defun handle_continue
+  (('boot (= (map 'id id 'auction a 'at at) data))
    ;; Barrier first: if this process is replacing one that timed out mid
    ;; append, that write may still be queued in the store. `sync' returns only
    ;; once the store has worked past it, so the index read below reflects what
@@ -45,20 +54,33 @@
    (event-store:sync)
    (case (event-store:events-for id)
      (()
-      (case (event-store:append `#(auction-added ,at ,a))
+      (case (append-added at a)
         ('ok
          (auction-registry:set-auction id a)
-         `#(ok ,(map 'auction a 'state (auction:empty-state a))))
-        (`#(error ,reason)
-         `#(stop ,reason))))
+         `#(noreply ,(map 'auction a 'state (auction:empty-state a))))
+        (`#(error ,_reason)
+         (give-up id data))))
      (events
       (let ((repository (commands:fold-events events)))
         (case (maps:find id repository)
           (`#(ok #(,recovered ,state))
            (auction-registry:set-auction id recovered)
-           `#(ok ,(map 'auction recovered 'state state)))
+           `#(noreply ,(map 'auction recovered 'state state)))
           ('error
-           `#(stop #(corrupt-log ,id)))))))))
+           (logger:error "auction ~p has a corrupt log" (list id))
+           (give-up id data))))))))
+
+;; Free the id before stopping; see auction-registry:release.
+(defun give-up (id data)
+  (auction-registry:release id)
+  `#(stop normal ,data))
+
+;; An append that times out exits; that used to fail init, and now fails the
+;; create the same way.
+(defun append-added (at a)
+  (try
+    (event-store:append `#(auction-added ,at ,a))
+    (catch ((tuple 'exit reason _) `#(error ,reason)))))
 
 (defun handle_call
   ;; A bid is acknowledged only once BidAccepted is on disk. On a store
@@ -84,6 +106,10 @@
   ;; Reads increment lazily and do not store the result, as in Haskell.
   ((`#(get ,now) _from (= (map 'auction a 'state s) data))
    `#(reply #(ok #(,a ,(auction-state:inc now s))) ,data))
+  ;; Answered only once `boot' has completed, which is what the facade's
+  ;; create waits for.
+  (('ready _from data)
+   `#(reply ok ,data))
   (('stop _from data)
    `#(stop shutdown ok ,data))
   ((_msg _from data)

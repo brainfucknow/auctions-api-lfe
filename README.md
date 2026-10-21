@@ -32,6 +32,24 @@ The event log lives at `/var/lib/auctions/events.log` inside the container, so
 mount a volume there to keep auctions across restarts. Port and path are set in
 [config/sys.config](config/sys.config).
 
+## Performance
+
+Every accepted event is synced to disk before the client gets a reply (see
+[PARITY.md](PARITY.md)). The sync costs milliseconds; the write costs
+microseconds. The event store therefore writes all queued appends under one
+sync, so concurrent writers share the cost. A single client doing one write at
+a time still pays a full sync per request.
+
+The F# and Haskell apps do not persist at all by default. To compare with
+them, turn the sync off:
+
+```erlang
+%% sys.config
+{auctions, [{events_fsync, false}]}
+```
+
+The scripts that produced the numbers are in [bench/](bench/README.md).
+
 ## Layout
 
 | Path | Contents |
@@ -115,3 +133,7 @@ Things that cost time here, recorded so they only cost it once.
 - **`is_process_alive` is not guard-safe** — test it in the body, not a `when`.
 - **Keep `inc` lazy.** Reading an auction must not persist the advanced state,
   or the English timing tests diverge.
+- **`supervisor:start_child` blocks the supervisor until `init` returns**, so
+  slow work belongs in `handle_continue`, which still runs before any call.
+- **`disk_log:sync` is the cost, not `disk_log:log`** (about 4 ms against
+  4 µs here). Batch events under one sync rather than skipping it.

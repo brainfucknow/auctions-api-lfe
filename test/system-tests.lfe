@@ -152,8 +152,8 @@
           (is-equal '(auction-added auction-added bid-accepted)
                     (lists:sort (log-tags file))))))))
 
-;; A gen_server answers no calls until init returns, and init writes
-;; AuctionAdded, so a bid can never be logged before its auction.
+;; An auction writes AuctionAdded in its boot continue, which runs before
+;; any call is handled, so a bid can never be logged before its auction.
 (deftest auction-added-precedes-bid-accepted-in-the-log
   (with-app "order"
     (lambda (file)
@@ -182,9 +182,51 @@
                     (length (lists:filter (lambda (t) (=:= t 'bid-accepted))
                                           (log-tags file)))))))))
 
+;; Creates and bids arriving together are written under one sync. Every one
+;; of them must still be acknowledged and on disk, in an order where no bid
+;; precedes its auction.
+(deftest concurrent-creates-and-bids-are-all-logged
+  (with-app "concurrent"
+    (lambda (file)
+      (let* ((now (clock:now))
+             (ids (lists:seq 1 20))
+             (created (pmap (lambda (id) (auctions:add-auction now (an-auction id now))) ids))
+             (bid (pmap (lambda (id) (auctions:place-bid (+ now 1) (a-bid id 1 (+ now 1) 10))) ids)))
+        (lists:foreach (lambda (r) (is-match `#(ok #(auction-added ,_ ,_)) r)) created)
+        (lists:foreach (lambda (r) (is-match `#(ok #(bid-accepted ,_ ,_)) r)) bid)
+        (is-equal 20 (length (auctions:list-auctions)))
+        (lists:foreach (lambda (id) (is-equal 1 (length (bids-of id (+ now 10))))) ids)
+        (let ((tags (log-tags file)))
+          (is-equal 40 (length tags))
+          (is-equal 20 (length (lists:filter (lambda (t) (=:= t 'auction-added)) tags))))))))
+
+;; A create whose AuctionAdded cannot be written leaves nothing behind: no
+;; process, no registry row, no event.
+(deftest create-failure-leaves-no-auction
+  (with-app "cfail" (map 'max-bytes 100)
+    (lambda (file)
+      (let ((now (clock:now)))
+        (is-equal '#(error event-store-unavailable)
+                  (auctions:add-auction now (an-auction 1 now)))
+        (is-equal 'undefined (auction-registry:whereis_name 1))
+        (is-equal '() (auctions:list-auctions))
+        (is-equal '#(error #(auction-not-found 1)) (auctions:get 1 now))
+        (is-equal '() (log-tags file))))))
+
 ;;; -----------------
 ;;; helpers
 ;;; -----------------
+
+(defun pmap (f xs)
+  (let ((parent (self)))
+    (lists:map
+     (lambda (ref) (receive (`#(,r ,result) (when (=:= r ref)) result)))
+     (lists:map
+      (lambda (x)
+        (let ((ref (make_ref)))
+          (spawn_link (lambda () (! parent `#(,ref ,(funcall f x)))))
+          ref))
+      xs))))
 
 (defun wait-for-restart
   ((_id _old 0) 'timeout)
