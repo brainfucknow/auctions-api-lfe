@@ -30,9 +30,7 @@
   (let ((`#(ok #(,_a ,state)) (auctions:get id now)))
     (auction-state:get-bids state)))
 
-;;; -----------------
 ;;; app lifecycle
-;;; -----------------
 
 (defun stop-app ()
   (application:stop 'auctions)
@@ -69,10 +67,6 @@
                   (`#(,_cont ,terms) (lists:map (lambda (t) (element 1 t)) terms)))))
       (disk_log:close 'inspect-log)
       tags)))
-
-;;; -----------------
-;;; tests
-;;; -----------------
 
 (deftest create-bid-read-and-list
   (with-app "create"
@@ -212,10 +206,6 @@
         (is-equal '() (auctions:list-auctions))
         (is-equal '#(error #(auction-not-found 1)) (auctions:get 1 now))
         (is-equal '() (log-tags file))))))
-
-;;; -----------------
-;;; helpers
-;;; -----------------
 
 (defun pmap (f xs)
   (let ((parent (self)))

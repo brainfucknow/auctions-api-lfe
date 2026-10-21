@@ -23,9 +23,7 @@
                                         ,(auction-id a)))
     'ok))
 
-;;; ---------------
 ;;; string codec
-;;; ---------------
 
 (defun typ->binary
   ((`#(timed-ascending ,opts)) (timed-ascending:options->binary opts))
@@ -40,9 +38,7 @@
        (`#(ok ,opts) `#(ok #(single-sealed-bid ,opts)))
        (_ `#(error #(invalid-auction-type ,bin)))))))
 
-;;; ---------------
 ;;; json codec
-;;; ---------------
 
 (defun to-json (a)
   (map #"id"       (auction-id a)

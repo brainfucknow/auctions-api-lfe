@@ -1,8 +1,4 @@
-;;; Test-only port of AuctionSite.Persistence.JsonFile.
-;;;
-;;; The port's event store is a disk_log, so this JSONL reader/writer exists
-;;; purely to exercise the command codec against the upstream sample file and
-;;; to reproduce SerializationSpec's read/write round trip.
+;;; JSONL codec tests against upstream samples and SerializationSpec round trips.
 (defmodule json-lines
   (export
    (read-commands 1)

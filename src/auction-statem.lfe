@@ -1,26 +1,13 @@
-;;; gen_statem variant of auction-server (phase 6, not needed for parity).
+;;; Auction process with expiry timers and hibernation after ending.
+;;; Uses the auction-server call protocol. Select with
+;;; {auction_module, 'auction-statem'} in the application environment.
 ;;;
-;;; Same call protocol as auction-server, plus two things a gen_server cannot
-;;; do as naturally:
-;;;
-;;;   - a state_timeout armed at the auction's expiry, so an auction ends on
-;;;     its own and publishes AuctionEnded rather than waiting for a reader to
-;;;     notice it has lapsed;
-;;;   - hibernation once ended, so a long-lived node stops paying for auctions
-;;;     that will never change again.
-;;;
-;;; Select it with {auction_module, 'auction-statem'} in the application
-;;; environment.
-;;;
-;;; The timer is armed off the real clock while domain decisions still go
-;;; through clock:now/0. Pinning the clock therefore does not pin the timer,
-;;; which is why parity testing uses the gen_server instead.
+;;; Timers use real time; domain decisions use clock:now/0.
+;;; Use auction-server for tests with a fixed clock.
 (defmodule auction-statem
   (behaviour gen_statem)
-  ;; gen_statem implementation
   (export
    (start_link 3))
-  ;; callback implementation
   (export
    (init 1)
    (callback_mode 0)
@@ -40,9 +27,7 @@
 
 (defun callback_mode () '(handle_event_function state_enter))
 
-;;; -----------------------
 ;;; start and recovery
-;;; -----------------------
 
 (defun init
   (((list id a at))
@@ -96,9 +81,7 @@
 (defun published? (events)
   (lists:any (lambda (e) (=:= (element 1 e) 'auction-ended)) events))
 
-;;; -----------------------
 ;;; event handling
-;;; -----------------------
 
 (defun handle_event
   (('enter _old 'booting _data)
@@ -111,15 +94,13 @@
   (('enter _old 'active data)
    `#(keep_state_and_data (,(expiry-timeout data))))
 
-  ;; Nothing will change again, so give the memory back. If the end has not
-  ;; been recorded yet, do that first.
+  ;; Record AuctionEnded before hibernating.
   (('enter _old 'ended data)
    (if (maps:get 'published data)
      '#(keep_state_and_data (hibernate))
      '#(keep_state_and_data (#(state_timeout 0 publish)))))
 
-  ;; Expiry reached. A bid may have pushed the expiry out while the timer was
-  ;; running, in which case the auction is still live and we simply re-arm.
+  ;; Recheck expiry in case a bid extended it.
   (('state_timeout 'expired 'active data)
    (let* ((advanced (auction-state:inc (clock:now) (maps:get 'state data)))
           (next (maps:put 'state advanced data)))
@@ -132,8 +113,7 @@
      ('ok
       `#(keep_state ,(maps:put 'published 'true data) (hibernate)))
      (`#(error ,_reason)
-      ;; The store is unavailable; the auction is still ended, so keep trying
-      ;; rather than losing the record of it.
+      ;; Retry publishing without reopening the auction.
       `#(keep_state_and_data (#(state_timeout ,(RETRY) publish))))))
 
   ((`#(call ,from) `#(place-bid ,at ,b) fsm data)
@@ -186,12 +166,7 @@
       `#(keep_state ,data (,reply ,(expiry-timeout data)))
       `#(keep_state ,data ,(cons reply (idle fsm))))))
 
-;;; -----------------
-;;; private functions
-;;; -----------------
-
-;; Answering a call wakes an ended auction up, so put it straight back to
-;; sleep; otherwise the first read undoes the hibernation for good.
+;; Calls wake hibernating auctions; hibernate again after replying.
 (defun answer (from reply fsm)
   `#(keep_state_and_data ,(cons `#(reply ,from ,reply) (idle fsm))))
 

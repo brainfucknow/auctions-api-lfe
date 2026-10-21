@@ -36,10 +36,6 @@
   ((iso) (when (is_binary iso)) (binary_to_list iso))
   ((iso) iso))
 
-;;; -----------------
-;;; private functions
-;;; -----------------
-
 (defun trim-fraction (bin)
   (case (binary:split bin #".")
     ((list head rest)

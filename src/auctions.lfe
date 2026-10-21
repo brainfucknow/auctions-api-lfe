@@ -60,10 +60,6 @@
 (defun list-auctions ()
   (auction-registry:auctions))
 
-;;; -----------------
-;;; private functions
-;;; -----------------
-
 ;; A call can fail because the auction died between the registry lookup and
 ;; the call, or because it was restarted while the store was unavailable.
 ;; Both are reported as a missing auction or an unavailable store rather than

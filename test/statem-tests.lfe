@@ -1,8 +1,5 @@
-;;; System tests for the phase 6 gen_statem variant.
-;;;
-;;; These use the real clock, not the pinned one: the whole point of the
-;;; variant is a timer that fires on its own, and a fixed clock would stop the
-;;; domain from ever agreeing that the auction had lapsed.
+;;; System tests for auction-statem.
+;;; Use real time so domain expiry checks agree with the timers.
 (defmodule statem-tests
   (behaviour ltest-system)
   (export all))
@@ -41,10 +38,6 @@
 (defun hibernating? (pid)
   (lists:member (current-function pid)
                 '(#(erlang hibernate 3) #(gen_statem loop_hibernate 3))))
-
-;;; -----------------
-;;; tests
-;;; -----------------
 
 ;; No reader has to poke the auction for it to lapse; the timer does it.
 (deftest auction-ends-on-its-own-timer
@@ -115,10 +108,6 @@
                  (auctions:place-bid (clock:now)
                                      (make-bid auction 1 bidder (a-buyer)
                                                at (clock:now) amount 99)))))))
-
-;;; -----------------
-;;; helpers
-;;; -----------------
 
 (defun with-statem (f)
   (let ((file "tmp/statem-events.log"))

@@ -1,14 +1,6 @@
-;;; Startup replay: walk the event store's index in log order and start one
-;;; auction process per AuctionAdded.
-;;;
-;;; Each child rebuilds its own state from the log, so this module only has to
-;;; decide *which* auctions exist. It does its work during start_link and then
-;;; returns `ignore', leaving no process behind; the top supervisor re-runs it
-;;; whenever the event store is restarted.
-;;;
-;;; A child recovers in handle_continue, after start_child has returned, so
-;;; replay waits for every child's `ready' before it returns. Until then a
-;;; child's registry row has no auction and GET /auctions would skip it.
+;;; Starts logged auctions and waits for recovery before returning `ignore'.
+;;; Each child replays its own events. The supervisor reruns this after a
+;;; store restart; waiting for `ready' keeps partial results out of GET /auctions.
 (defmodule event-replayer
   (export
    (start_link 0)

@@ -24,9 +24,7 @@
 (defun ending-soon-req ()
   #"{\"id\":1,\"startsAt\":\"2017-01-01T00:00:00.000Z\",\"endsAt\":\"2018-07-15T00:00:00.000Z\",\"title\":\"Ending Soon\",\"currency\":\"VAC\"}")
 
-;;; -----------------
 ;;; expected bodies
-;;; -----------------
 
 (defun auction-fields ()
   (map #"currency" #"VAC"
@@ -74,10 +72,6 @@
        #"bids" (list (map #"amount" 42 #"bidder" #"BuyerOrSeller|a2|Buyer"))
        #"winner" #"a2"
        #"winnerPrice" 42))
-
-;;; -----------------
-;;; tests
-;;; -----------------
 
 (deftest possible-to-add-auction
   (with-api (lambda () (is-equal `#(200 ,(auction-added)) (add-auction)))))
@@ -141,10 +135,6 @@
      (is-equal 200 (element 1 (post "/auctions/1/bids" (buyer1) #"{\"amount\":42}")))
      (set-now (late-time))
      (is-equal `#(200 ,(ended-auction)) (get-json "/auctions/1")))))
-
-;;; -----------------
-;;; helpers
-;;; -----------------
 
 (defun add-auction () (post "/auctions" (seller1) (first-auction-req)))
 (defun add-bid () (post "/auctions/1/bids" (buyer1) #"{\"amount\":11}"))

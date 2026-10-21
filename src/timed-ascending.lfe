@@ -29,9 +29,7 @@
 (defun empty-state (start expiry opts)
   `#(awaiting-start ,start ,expiry ,opts))
 
-;;; ---------------
 ;;; state machine
-;;; ---------------
 
 (defun inc
   ((now (= `#(awaiting-start ,start ,expiry ,opts) state))
@@ -89,9 +87,7 @@
   ((`#(has-ended ,_ ,_ ,_)) 'true)
   ((_) 'false))
 
-;;; ---------------
 ;;; string codec
-;;; ---------------
 
 (defun options->binary (opts)
   (erlang:iolist_to_binary

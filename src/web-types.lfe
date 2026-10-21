@@ -58,9 +58,7 @@
     ('error `#(ok #(timed-ascending ,(timed-ascending:default-options))))
     (`#(ok ,bin) (auction:binary->typ bin))))
 
-;;; ---------------
 ;;; responses
-;;; ---------------
 
 (defun auction-list-item (a)
   (map #"id"       (auction-id a)

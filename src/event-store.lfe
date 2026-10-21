@@ -1,22 +1,11 @@
-;;; Append-only event store over a disk_log, plus the ETS index that lets an
-;;; auction process rebuild itself without scanning the file.
-;;;
-;;; Durability contract: `append/1' returns ok only after disk_log:log/2 AND
-;;; disk_log:sync/1 have both succeeded, so a bid the client sees as accepted
-;;; has reached the device. Haskell queues the event and replies first; see
-;;; PARITY.md. There is deliberately no cast path - every caller blocks, which
-;;; is what bounds this process's mailbox.
-;;;
-;;; The sync is the cost, so appends are group-committed: every append
-;;; waiting in the mailbox is written in one pass under a single sync.
-;;; `{events_fsync, false}' skips the sync; see README.
+;;; disk_log event store with an ETS index for per-auction replay.
+;;; Appends commit in batches of up to MAX-BATCH events under one sync.
+;;; Replies follow sync unless {events_fsync, false} is set; see PARITY.md.
 (defmodule event-store
   (behaviour gen_server)
-  ;; gen_server implementation
   (export
    (start_link 0)
    (stop 0))
-  ;; callback implementation
   (export
    (init 1)
    (handle_call 3)
@@ -41,32 +30,21 @@
 ;; Upper bound on appends written under one sync.
 (defun MAX-BATCH () 256)
 
-;;; -------------------------
-;;; gen_server implementation
-;;; -------------------------
-
 (defun start_link ()
   (gen_server:start_link `#(local ,(SERVER)) (MODULE) '() '()))
 
 (defun stop ()
   (gen_server:call (SERVER) 'stop))
 
-;;; ---------------
 ;;; store API
-;;; ---------------
 
 ;; Blocks until the event is on disk. #(error Reason) on any failure; an exit
 ;; on timeout, which the calling auction process deliberately lets propagate.
 (defun append (event)
   (gen_server:call (SERVER) `#(append ,event) (TIMEOUT)))
 
-;; Barrier: returns only once this process has drained its mailbox up to this
-;; call. An auction that timed out on `append' left its request queued here,
-;; and that request arrived before this one, so a gen_server processes it
-;; first. Waiting on `sync' therefore guarantees the ETS index already
-;; reflects whether the timed-out write landed - which is what makes replay
-;; after a timeout trustworthy. Deliberately infinity: a restarting auction
-;; must not read a half-settled index.
+;; Wait for earlier requests, including appends whose callers timed out.
+;; Recovery waits without a timeout so it reads the settled ETS index.
 (defun sync ()
   (gen_server:call (SERVER) 'sync 'infinity))
 
@@ -81,10 +59,6 @@
 (defun added-auctions ()
   (lists:map (lambda (row) `#(,(element 2 row) ,(element 3 row)))
              (lists:keysort 1 (ets:tab2list (ADDED)))))
-
-;;; -----------------------
-;;; callback implementation
-;;; -----------------------
 
 (defun init (_args)
   (erlang:process_flag 'trap_exit 'true)
@@ -109,9 +83,7 @@
   (map 'seq (build-index) 'fsync (fsync?)))
 
 (defun handle_call
-  ;; Group commit: this append plus every append already queued behind it.
-  ;; The other callers are answered with gen_server:reply once the batch is
-  ;; on disk; this one through the normal return.
+  ;; Commit a bounded batch; reply to other callers explicitly.
   ((`#(append ,event) from state)
    (let* ((batch (cons `#(,from ,event) (drain (- (MAX-BATCH) 1) '())))
           (`#(,replies ,next) (commit batch state)))
@@ -139,10 +111,6 @@
   'ok)
 
 (defun code_change (_old state _extra) `#(ok ,state))
-
-;;; -----------------
-;;; private functions
-;;; -----------------
 
 ;; A halt log refuses further writes once it reaches this size, which is how
 ;; the tests exercise the write-failure path. Unbounded by default.
@@ -173,13 +141,9 @@
       (after 0
         (lists:reverse acc)))))
 
-;; Write every event in the batch, then sync once. Returns #(Replies State)
-;; where Replies is a list of #(From Reply) in batch order.
-;;
-;; log/2 hands the term to the OS; sync/1 pushes it to the device. Each
-;; event gets its own log/2 call, so a halt log that fills mid-batch fails
-;; only the events that did not fit. If the sync fails, every event written
-;; in this pass is reported as failed.
+;; Returns #(Replies State), with #(From Reply) entries in batch order.
+;; Log each event separately so a full log fails only the remaining writes.
+;; A sync failure fails the whole batch.
 (defun commit (batch state)
   (let* ((fsync (maps:get 'fsync state))
          (`#(,written ,seq2) (write-all batch (maps:get 'seq state))))

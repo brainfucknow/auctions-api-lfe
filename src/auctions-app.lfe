@@ -1,11 +1,7 @@
 ;;; Application callback. Port of app/Main.hs.
-;;;
-;;; The supervision tree comes up first - event store, registry, auction
-;;; supervisor, replayer - so that by the time the listener accepts a request
-;;; every auction in the log already has a process.
+;;; Replay completes before the HTTP listener starts.
 (defmodule auctions-app
   (behaviour application)
-  ;; app implementation
   (export
    (start 2)
    (stop 1)))
@@ -27,10 +23,6 @@
 (defun stop (_state)
   (catch (cowboy:stop_listener (LISTENER)))
   'ok)
-
-;;; -----------------
-;;; private functions
-;;; -----------------
 
 (defun start-listener ()
   (case (cowboy:start_clear (LISTENER)

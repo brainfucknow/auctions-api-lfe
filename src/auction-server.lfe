@@ -1,16 +1,8 @@
-;;; One gen_server per auction. This process is the port's replacement for the
-;;; single TVar the Haskell app serializes every write through: PlaceBid
-;;; touches exactly one auction, so one sequential process per auction is
-;;; enough to make bidding safe without a global lock.
-;;;
-;;; The process stays dumb - it holds a tagged tuple and delegates every
-;;; decision to the pure state machines.
+;;; Serializes writes per auction; domain rules live in the pure state machines.
 (defmodule auction-server
   (behaviour gen_server)
-  ;; gen_server implementation
   (export
    (start_link 3))
-  ;; callback implementation
   (export
    (init 1)
    (handle_continue 2)
@@ -28,29 +20,17 @@
                          (list id a at)
                          '()))
 
-;;; -----------------------
-;;; callback implementation
-;;; -----------------------
-
-;; init only records its arguments. start_child blocks the supervisor until
-;; init returns, so the synced write happens in handle_continue instead. A
-;; continue runs before the first call, so no call is answered until the
-;; auction is on disk or recovered.
+;; Defer disk I/O to handle_continue to avoid blocking the supervisor.
+;; Recovery or creation completes before the first call is handled.
 (defun init
   (((list id a at))
    `#(ok #M(id ,id auction ,a at ,at) #(continue boot))))
 
-;; Recovery and first start are the same code path. If the log already has
-;; events for this id we are being restarted, so fold them and write nothing;
-;; otherwise this is a fresh create and AuctionAdded must reach disk before
-;; `ready' is answered. On failure the process stops normally: the
-;; supervisor does not restart it, and the facade's call exits instead.
+;; Replay existing events or persist AuctionAdded for a new auction.
+;; On failure, stop normally to prevent a supervisor restart loop.
 (defun handle_continue
   (('boot (= (map 'id id 'auction a 'at at) data))
-   ;; Barrier first: if this process is replacing one that timed out mid
-   ;; append, that write may still be queued in the store. `sync' returns only
-   ;; once the store has worked past it, so the index read below reflects what
-   ;; actually reached disk rather than a snapshot taken too early.
+   ;; Settle any append left queued by the previous process before reading the index.
    (event-store:sync)
    (case (event-store:events-for id)
      (()
@@ -75,19 +55,15 @@
   (auction-registry:release id)
   `#(stop normal ,data))
 
-;; An append that times out exits; that used to fail init, and now fails the
-;; create the same way.
+;; Convert append exits into create errors.
 (defun append-added (at a)
   (try
     (event-store:append `#(auction-added ,at ,a))
     (catch ((tuple 'exit reason _) `#(error ,reason)))))
 
 (defun handle_call
-  ;; A bid is acknowledged only once BidAccepted is on disk. On a store
-  ;; failure the auction keeps its old state: an I/O failure is not a domain
-  ;; decision, so the client is told to retry rather than shown a changed
-  ;; auction. On a domain failure the state is likewise left alone, matching
-  ;; Haskell's `handle', which discards the incremented repository.
+  ;; Persist BidAccepted before acknowledging. Keep the old state on store
+  ;; or domain errors, matching Haskell's `handle'.
   ((`#(place-bid ,at ,b) _from (= (map 'auction a 'state s) data))
    (case (auction:validate-bid b a)
      (`#(error ,e)

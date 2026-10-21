@@ -17,9 +17,7 @@
 (defun timed-ascending-typ ()
   `#(timed-ascending ,(timed-ascending:default-options)))
 
-;;; -----------
 ;;; read json
-;;; -----------
 
 (deftest reading-commands-from-jsonl
   (is-not-equal 'none (json-lines:read-commands (samples))))
@@ -39,9 +37,7 @@
             (commands:command-from-json
              (json:decode #"{\"$type\":\"PlaceBid\",\"at\":\"2020-05-17T08:15:22.948Z\",\"bid\":{\"id\":\"32e692cc3fdb451da9647d6eeca5b2e3\",\"auction\":1,\"user\":\"BuyerOrSeller|a2|Buyer\",\"amount\":11,\"at\":\"2020-05-17T08:15:22.940Z\"}}"))))
 
-;;; -------
 ;;; parse
-;;; -------
 
 (deftest can-parse-amount
   (is-equal '#(ok #(amount vac 0)) (money:binary->amount #"VAC0")))
@@ -58,9 +54,7 @@
   (is-equal `#(ok ,(timed-ascending-typ))
             (auction:binary->typ #"English|0|0|0")))
 
-;;; ------------
 ;;; write json
-;;; ------------
 
 (deftest can-serialize-add-auction
   (is-equal (json:decode #"{\"$type\":\"AddAuction\",\"at\":\"2016-01-01T08:28:00.607Z\",\"auction\":{\"expiry\":\"2016-02-01T08:28:00.607Z\",\"startsAt\":\"2016-01-01T08:28:00.607Z\",\"user\":\"BuyerOrSeller|Sample_Seller|Seller\",\"currency\":\"SEK\",\"id\":1,\"title\":\"auction\",\"type\":\"Vickrey\"}}")
@@ -72,9 +66,7 @@
   (is-equal (json:decode #"{\"$type\":\"PlaceBid\",\"at\":\"2016-02-01T07:28:00.607Z\",\"bid\":{\"amount\":10,\"at\":\"2016-01-01T08:28:00.608Z\",\"auction\":1,\"user\":\"BuyerOrSeller|Buyer_1|Buyer 1\"}}")
             (commands:command-to-json (place-bid))))
 
-;;; ---------------------
 ;;; read and write json
-;;; ---------------------
 
 (deftest read-and-write-commands-round-trip
   (filelib:ensure_dir (tmp-samples))

@@ -15,9 +15,7 @@
 
 (include-lib "auctions/include/auctions.lfe")
 
-;;; ---------------
 ;;; json codec
-;;; ---------------
 
 (defun command-to-json
   ((`#(add-auction ,at ,a))
@@ -79,9 +77,7 @@
       (_ `#(error #(invalid-command ,obj)))))
    ('true `#(error #(unknown-command-type ,typ)))))
 
-;;; -----------------
 ;;; replay
-;;; -----------------
 
 ;; Fold a log back into #M(AuctionId #(Auction State)). This is the same code
 ;; path an auction process uses to rebuild itself after a restart.

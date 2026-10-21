@@ -18,8 +18,7 @@
   ((`#(support ,id))
    (erlang:iolist_to_binary (list #"Support|" id))))
 
-;; Haskell splits on "|" and demands exactly three or two parts, so a name
-;; containing a pipe fails to parse. Kept as-is.
+;; Match Haskell's field count: names containing a pipe fail to parse.
 (defun binary->user (bin)
   (case (binary:split bin #"|" '(global))
     ((list #"BuyerOrSeller" id name) `#(ok #(buyer-or-seller ,id ,name)))
